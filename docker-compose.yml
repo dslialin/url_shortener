@@ -1,32 +1,64 @@
 version: '3.8'
 
 services:
-  web:
+  app:
     build: .
+    restart: always
     ports:
       - "8000:8000"
-    volumes:
-      - .:/app
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@db/url_shortener
+      - DATABASE_URL=sqlite:///./url_shortener.db
+      - SECRET_KEY=09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7
+      - ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=30
       - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
     depends_on:
-      - db
       - redis
-
-  db:
-    image: postgres:13
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=url_shortener
+      - ./app:/app/app
+      - sqlite_data:/app
 
   redis:
-    image: redis:6
+    image: redis:6-alpine
+    restart: always
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+
+  celery:
+    build: .
+    restart: always
+    command: celery -A app.celery_app worker --loglevel=info
+    volumes:
+      - ./app:/app/app
+      - sqlite_data:/app
+    depends_on:
+      - redis
+    environment:
+      - DATABASE_URL=sqlite:///./url_shortener.db
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+
+  celery-beat:
+    build: .
+    restart: always
+    command: celery -A app.celery_app beat --loglevel=info
+    volumes:
+      - ./app:/app/app
+      - sqlite_data:/app
+    depends_on:
+      - redis
+    environment:
+      - DATABASE_URL=sqlite:///./url_shortener.db
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
 
 volumes:
-  postgres_data: 
+  sqlite_data:
+  redis_data: 

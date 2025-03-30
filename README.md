@@ -28,9 +28,26 @@
 - `DELETE /links/{short_code}` - Удаление ссылки (требуется авторизация)
 - `PUT /links/{short_code}` - Обновление ссылки (требуется авторизация)
 - `GET /links/search` - Поиск по оригинальному URL
-- `GET /all-links` - Получение всех ссылок (для дебага)
+- `GET /links` - Получение всех ссылок (для дебага)
 
 ## Установка и запуск
+
+### Запуск с помощью Docker
+
+1. Убедитесь, что у вас установлены Docker и Docker Compose
+2. Клонируйте репозиторий:
+   ```bash
+   git clone https://github.com/yourusername/url_shortener.git
+   cd url_shortener
+   ```
+3. Запустите приложение с помощью Docker Compose:
+   ```bash
+   docker-compose up -d
+   ```
+
+Сервис будет доступен по адресу http://localhost:8000
+
+### Запуск локально
 
 1. Убедитесь, что у вас установлен Python 3.8 или выше
 2. Установите Redis (для кэширования)
@@ -49,8 +66,6 @@
    ```bash
    uvicorn app.main:app --reload --port 8000
    ```
-
-Сервис будет доступен по адресу http://localhost:8000
 
 ## Документация API
 
@@ -110,7 +125,13 @@ url_shortener/
 │   ├── schemas.py     # Схемы Pydantic
 │   ├── auth.py        # Аутентификация и авторизация
 │   ├── database.py    # Настройка базы данных
+│   ├── tasks.py       # Задачи Celery для автоматической очистки
+│   ├── celery_app.py  # Настройка Celery
 │   └── redis_client.py # Клиент Redis для кэширования
+├── Dockerfile         # Файл для сборки Docker образа
+├── docker-compose.yml # Конфигурация Docker Compose
+├── docker-entrypoint.sh # Скрипт инициализации
+├── .env               # Переменные окружения
 ├── requirements.txt   # Зависимости проекта
 └── README.md          # Документация
 ``` 
