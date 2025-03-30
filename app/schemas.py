@@ -46,4 +46,20 @@ class LinkResponse(LinkBase):
         from_attributes = True
 
 class LinkStats(LinkResponse):
-    pass 
+    pass
+
+class SettingsBase(BaseModel):
+    key: str
+    value: str
+    description: Optional[str] = None
+
+class SettingsCreate(SettingsBase):
+    pass
+
+class Settings(SettingsBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True 

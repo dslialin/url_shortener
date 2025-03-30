@@ -25,4 +25,14 @@ class Link(Base):
     last_accessed = Column(DateTime, nullable=True)
     access_count = Column(Integer, default=0)
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    owner = relationship("User", back_populates="links") 
+    owner = relationship("User", back_populates="links")
+
+class Settings(Base):
+    __tablename__ = "settings"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    key = Column(String, unique=True, index=True)
+    value = Column(String)
+    description = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow) 
