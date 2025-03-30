@@ -9,13 +9,12 @@ import string
 import logging
 from fastapi.security import OAuth2PasswordRequestForm
 import uvicorn
-import redis
 import json
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-from app.database import SessionLocal, engine
+from app.database import SessionLocal, engine, get_db
 import app.models as models
 import app.schemas as schemas
 from app.redis_client import (
@@ -41,15 +40,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-redis_client = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 def generate_short_code(length: int = 6) -> str:
     characters = string.ascii_letters + string.digits
@@ -91,9 +81,21 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     )
     return {"access_token": access_token, "token_type": "bearer"}
 
-@app.get("/users/me", response_model=schemas.User)
+@app.get("/users/me")
 async def read_users_me(current_user: models.User = Depends(get_current_active_user)):
-    return current_user
+    try:
+        result = {
+            "username": current_user.username,
+            "email": current_user.email,
+            "id": current_user.id,
+            "is_active": current_user.is_active
+        }
+        return result
+    except Exception as e:
+        import traceback
+        logger.error(f"Error in read_users_me: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/links/shorten", response_model=schemas.LinkResponse)
 async def create_short_link(
@@ -101,30 +103,36 @@ async def create_short_link(
     db: Session = Depends(get_db),
     current_user: Optional[models.User] = Depends(get_current_active_user)
 ):
-    if link.custom_alias:
-        existing_link = db.query(models.Link).filter(models.Link.custom_alias == link.custom_alias).first()
-        if existing_link:
-            raise HTTPException(status_code=400, detail="Custom alias already in use")
-        short_code = link.custom_alias
-    else:
-        import secrets
-        import string
-        alphabet = string.ascii_letters + string.digits
-        short_code = ''.join(secrets.choice(alphabet) for _ in range(6))
-
-    db_link = models.Link(
-        original_url=str(link.original_url),
-        short_code=short_code,
-        custom_alias=link.custom_alias,
-        expires_at=link.expires_at,
-        owner_id=current_user.id if current_user else None,
-        created_at=datetime.utcnow(),
-        access_count=0
-    )
-    
     try:
+        logger.debug(f"Creating short link for URL: {link.original_url}, custom alias: {link.custom_alias}")
+        if link.custom_alias:
+            existing_link = db.query(models.Link).filter(models.Link.custom_alias == link.custom_alias).first()
+            if existing_link:
+                raise HTTPException(status_code=400, detail="Custom alias already in use")
+            short_code = link.custom_alias
+        else:
+            import secrets
+            import string
+            alphabet = string.ascii_letters + string.digits
+            short_code = ''.join(secrets.choice(alphabet) for _ in range(6))
+        
+        logger.debug(f"Using short code: {short_code}")
+        logger.debug(f"Current user: {current_user.username if current_user else None}")
+        
+        db_link = models.Link(
+            original_url=str(link.original_url),
+            short_code=short_code,
+            custom_alias=link.custom_alias,
+            expires_at=link.expires_at,
+            owner_id=current_user.id if current_user else None,
+            created_at=datetime.utcnow(),
+            access_count=0
+        )
+        
+        logger.debug("Adding link to database")
         db.add(db_link)
         db.commit()
+        logger.debug("Link added to database")
         db.refresh(db_link)
         
         # Сохраняем в кэш
@@ -136,10 +144,23 @@ async def create_short_link(
         }
         set_cached_link(short_code, cache_data)
         
-        return db_link
+        result = {
+            "original_url": db_link.original_url,
+            "short_code": db_link.short_code,
+            "custom_alias": db_link.custom_alias,
+            "created_at": db_link.created_at,
+            "expires_at": db_link.expires_at,
+            "last_accessed": db_link.last_accessed,
+            "access_count": db_link.access_count,
+            "owner_id": db_link.owner_id
+        }
+        logger.debug(f"Returning link: {result}")
+        return result
     except Exception as e:
         db.rollback()
-        logger.error(f"Error creating short link: {str(e)}", exc_info=True)
+        import traceback
+        logger.error(f"Error creating short link: {str(e)}")
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/test")
@@ -240,8 +261,6 @@ async def delete_link(
     if link.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to delete this link")
 
-    redis_client.delete(f"link:{short_code}")
-    
     db.delete(link)
     db.commit()
     return {"message": "Link deleted successfully"}
@@ -266,8 +285,6 @@ async def update_link(
     if link_update.expires_at is not None:
         db_link.expires_at = link_update.expires_at
 
-    redis_client.delete(f"link:{short_code}")
-    
     db.commit()
     db.refresh(db_link)
     return db_link

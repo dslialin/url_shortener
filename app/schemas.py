@@ -1,4 +1,4 @@
-from pydantic import BaseModel, HttpUrl, EmailStr
+from pydantic import BaseModel, EmailStr
 from datetime import datetime
 from typing import Optional
 
@@ -24,7 +24,7 @@ class TokenData(BaseModel):
     username: Optional[str] = None
 
 class LinkBase(BaseModel):
-    original_url: HttpUrl
+    original_url: str
     custom_alias: Optional[str] = None
     expires_at: Optional[datetime] = None
 
