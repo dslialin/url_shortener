@@ -1,14 +1,17 @@
-from fastapi import FastAPI, HTTPException, Depends, Query, Request
+from fastapi import FastAPI, HTTPException, Depends, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, JSONResponse
 from sqlalchemy.orm import Session
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, List
 import random
 import string
 import logging
+from fastapi.security import OAuth2PasswordRequestForm
+import uvicorn
+import redis
+import json
 
-# Настройка логирования
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
@@ -17,6 +20,13 @@ import models, schemas
 from redis_client import (
     get_cached_link, set_cached_link, delete_cached_link,
     increment_access_count, get_link_stats, set_link_stats
+)
+from auth import (
+    get_current_active_user,
+    get_password_hash,
+    authenticate_user,
+    create_access_token,
+    ACCESS_TOKEN_EXPIRE_MINUTES
 )
 
 models.Base.metadata.create_all(bind=engine)
@@ -31,6 +41,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Redis connection
+redis_client = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+
 def get_db():
     db = SessionLocal()
     try:
@@ -42,36 +55,74 @@ def generate_short_code(length: int = 6) -> str:
     characters = string.ascii_letters + string.digits
     return ''.join(random.choice(characters) for _ in range(length))
 
+@app.post("/register", response_model=schemas.User)
+def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
+    db_user = db.query(models.User).filter(models.User.username == user.username).first()
+    if db_user:
+        raise HTTPException(status_code=400, detail="Username already registered")
+
+    db_user = db.query(models.User).filter(models.User.email == user.email).first()
+    if db_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    hashed_password = get_password_hash(user.password)
+    db_user = models.User(
+        username=user.username,
+        email=user.email,
+        hashed_password=hashed_password
+    )
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
+
+@app.post("/token", response_model=schemas.Token)
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    user = authenticate_user(db, form_data.username, form_data.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.username}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@app.get("/users/me", response_model=schemas.User)
+async def read_users_me(current_user: models.User = Depends(get_current_active_user)):
+    return current_user
+
 @app.post("/links/shorten", response_model=schemas.LinkResponse)
-async def create_short_link(link: schemas.LinkCreate, db: Session = Depends(get_db)):
+async def create_short_link(
+    link: schemas.LinkCreate,
+    db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_current_active_user)
+):
     if link.custom_alias:
-        existing_link = db.query(models.Link).filter(models.Link.short_code == link.custom_alias).first()
+        existing_link = db.query(models.Link).filter(models.Link.custom_alias == link.custom_alias).first()
         if existing_link:
             raise HTTPException(status_code=400, detail="Custom alias already in use")
         short_code = link.custom_alias
     else:
-        short_code = generate_short_code()
-        while db.query(models.Link).filter(models.Link.short_code == short_code).first():
-            short_code = generate_short_code()
-    
+        import secrets
+        import string
+        alphabet = string.ascii_letters + string.digits
+        short_code = ''.join(secrets.choice(alphabet) for _ in range(6))
+
     db_link = models.Link(
-        original_url=str(link.original_url),
+        original_url=link.original_url,
         short_code=short_code,
+        custom_alias=link.custom_alias,
         expires_at=link.expires_at,
-        created_at=datetime.utcnow()
+        owner_id=current_user.id if current_user else None
     )
+    
     db.add(db_link)
     db.commit()
     db.refresh(db_link)
-    
-    link_data = {
-        "original_url": str(link.original_url),
-        "expires_at": link.expires_at.isoformat() if link.expires_at else None,
-        "access_count": 0,
-        "last_accessed": None
-    }
-    set_cached_link(short_code, link_data)
-    
     return db_link
 
 @app.get("/test")
@@ -160,39 +211,50 @@ async def redirect_to_url(short_code: str, db: Session = Depends(get_db)):
     return RedirectResponse(url=link.original_url)
 
 @app.delete("/links/{short_code}")
-async def delete_link(short_code: str, db: Session = Depends(get_db)):
+async def delete_link(
+    short_code: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_active_user)
+):
     link = db.query(models.Link).filter(models.Link.short_code == short_code).first()
     if not link:
         raise HTTPException(status_code=404, detail="Link not found")
     
-    delete_cached_link(short_code)
+    if link.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this link")
+    
+    # Delete from Redis cache if exists
+    redis_client.delete(f"link:{short_code}")
     
     db.delete(link)
     db.commit()
     return {"message": "Link deleted successfully"}
 
 @app.put("/links/{short_code}", response_model=schemas.LinkResponse)
-async def update_link(short_code: str, link_update: schemas.LinkUpdate, db: Session = Depends(get_db)):
-    link = db.query(models.Link).filter(models.Link.short_code == short_code).first()
-    if not link:
+async def update_link(
+    short_code: str,
+    link_update: schemas.LinkUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_active_user)
+):
+    db_link = db.query(models.Link).filter(models.Link.short_code == short_code).first()
+    if not db_link:
         raise HTTPException(status_code=404, detail="Link not found")
     
-    if link_update.original_url:
-        link.original_url = str(link_update.original_url)
-    if link_update.expires_at:
-        link.expires_at = link_update.expires_at
+    if db_link.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to update this link")
+    
+    # Update fields
+    if link_update.original_url is not None:
+        db_link.original_url = link_update.original_url
+    if link_update.expires_at is not None:
+        db_link.expires_at = link_update.expires_at
+
+    redis_client.delete(f"link:{short_code}")
     
     db.commit()
-    
-    link_data = {
-        "original_url": link.original_url,
-        "expires_at": link.expires_at.isoformat() if link.expires_at else None,
-        "access_count": link.access_count,
-        "last_accessed": link.last_accessed.isoformat() if link.last_accessed else None
-    }
-    set_cached_link(short_code, link_data)
-    
-    return link
+    db.refresh(db_link)
+    return db_link
 
 @app.get("/all-links")
 async def get_all_links(db: Session = Depends(get_db)):
