@@ -15,13 +15,14 @@ import json
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-from database import SessionLocal, engine
-import models, schemas
-from redis_client import (
+from app.database import SessionLocal, engine
+import app.models as models
+import app.schemas as schemas
+from app.redis_client import (
     get_cached_link, set_cached_link, delete_cached_link,
     increment_access_count, get_link_stats, set_link_stats
 )
-from auth import (
+from app.auth import (
     get_current_active_user,
     get_password_hash,
     authenticate_user,
@@ -112,17 +113,34 @@ async def create_short_link(
         short_code = ''.join(secrets.choice(alphabet) for _ in range(6))
 
     db_link = models.Link(
-        original_url=link.original_url,
+        original_url=str(link.original_url),
         short_code=short_code,
         custom_alias=link.custom_alias,
         expires_at=link.expires_at,
-        owner_id=current_user.id if current_user else None
+        owner_id=current_user.id if current_user else None,
+        created_at=datetime.utcnow(),
+        access_count=0
     )
     
-    db.add(db_link)
-    db.commit()
-    db.refresh(db_link)
-    return db_link
+    try:
+        db.add(db_link)
+        db.commit()
+        db.refresh(db_link)
+        
+        # Сохраняем в кэш
+        cache_data = {
+            "original_url": str(db_link.original_url),
+            "expires_at": db_link.expires_at.isoformat() if db_link.expires_at else None,
+            "access_count": db_link.access_count,
+            "last_accessed": db_link.last_accessed.isoformat() if db_link.last_accessed else None
+        }
+        set_cached_link(short_code, cache_data)
+        
+        return db_link
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error creating short link: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/test")
 async def test_endpoint():

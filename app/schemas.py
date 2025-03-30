@@ -24,7 +24,7 @@ class TokenData(BaseModel):
     username: Optional[str] = None
 
 class LinkBase(BaseModel):
-    original_url: str
+    original_url: HttpUrl
     custom_alias: Optional[str] = None
     expires_at: Optional[datetime] = None
 
