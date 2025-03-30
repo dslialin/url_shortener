@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Optional
 
 class LinkBase(BaseModel):
-    original_url: HttpUrl
+    original_url: str
     custom_alias: Optional[str] = None
     expires_at: Optional[datetime] = None
 
@@ -11,7 +11,7 @@ class LinkCreate(LinkBase):
     pass
 
 class LinkUpdate(BaseModel):
-    original_url: Optional[HttpUrl] = None
+    original_url: Optional[str] = None
     expires_at: Optional[datetime] = None
 
 class LinkResponse(LinkBase):
