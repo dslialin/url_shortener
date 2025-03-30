@@ -41,7 +41,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Redis connection
 redis_client = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
 
 def get_db():
@@ -222,8 +221,7 @@ async def delete_link(
     
     if link.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to delete this link")
-    
-    # Delete from Redis cache if exists
+
     redis_client.delete(f"link:{short_code}")
     
     db.delete(link)

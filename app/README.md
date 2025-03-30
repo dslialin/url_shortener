@@ -13,6 +13,7 @@
 - Просмотр всех сокращенных URL
 - Обновление и удаление URL (для аутентифицированных пользователей)
 - Установка времени истечения срока действия URL
+- Управление неиспользуемыми ссылками
 
 ## Требования
 
@@ -55,12 +56,26 @@ uvicorn main:app --reload --port 8090
 
 ### Управление URL
 - `POST /links/shorten` - Создание нового короткого URL (требует аутентификации)
+  - Поддерживает пользовательские алиасы
+  - Позволяет установить срок действия ссылки
+  - Автоматически генерирует короткий код, если алиас не указан
 - `GET /{short_code}` - Перенаправление на оригинальный URL
-- `GET /links/{short_code}/stats` - Получение статистики по URL
-- `GET /links/search` - Поиск по оригинальному URL
-- `GET /links` - Просмотр всех сокращенных URL
+- `GET /links/{short_code}/stats` - Получение статистики по URL (требует аутентификации)
+  - Показывает количество переходов
+  - Отображает дату последнего доступа
+  - Включает информацию о сроке действия
+- `GET /links/search` - Поиск по оригинальному URL (требует аутентификации)
+- `GET /links` - Просмотр всех сокращенных URL пользователя (требует аутентификации)
 - `PUT /links/{short_code}` - Обновление URL (требует аутентификации)
+  - Можно обновить срок действия
+  - Можно изменить пользовательский алиас
 - `DELETE /links/{short_code}` - Удаление URL (требует аутентификации)
+
+### Управление неиспользуемыми ссылками
+- `GET /settings/unused-links-days` - Получение текущей настройки периода неиспользования ссылок
+- `PUT /settings/unused-links-days` - Обновление периода неиспользования ссылок (требует аутентификации)
+- `GET /links/expired` - Просмотр списка истекших ссылок (требует аутентификации)
+- `POST /cleanup` - Запуск очистки неиспользуемых ссылок (требует аутентификации)
 
 ## Примеры использования
 
@@ -88,20 +103,45 @@ curl -X POST "http://localhost:8090/links/shorten" \
 
 ### Получение статистики по URL:
 ```bash
-curl "http://localhost:8090/links/{short_code}/stats"
+curl "http://localhost:8090/links/{short_code}/stats" \
+     -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
 ```
 
-### Обновление URL (с аутентификацией):
+### Поиск ссылок:
+```bash
+curl "http://localhost:8090/links/search?original_url=https://example.com" \
+     -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+### Обновление ссылки:
 ```bash
 curl -X PUT "http://localhost:8090/links/{short_code}" \
      -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
      -H "Content-Type: application/json" \
-     -d '{"original_url": "https://www.new-url.com"}'
+     -d '{"expires_at": "2025-12-31T23:59:59"}'
 ```
 
-### Удаление URL (с аутентификацией):
+### Удаление ссылки:
 ```bash
 curl -X DELETE "http://localhost:8090/links/{short_code}" \
+     -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+### Управление настройками неиспользуемых ссылок:
+```bash
+# Получение текущей настройки
+curl "http://localhost:8090/settings/unused-links-days"
+
+# Обновление периода неиспользования (например, 60 дней)
+curl -X PUT "http://localhost:8090/settings/unused-links-days?days=60" \
+     -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+
+# Просмотр истекших ссылок
+curl "http://localhost:8090/links/expired" \
+     -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+
+# Запуск очистки неиспользуемых ссылок
+curl -X POST "http://localhost:8090/cleanup" \
      -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
 ```
 
@@ -129,3 +169,18 @@ curl -X DELETE "http://localhost:8090/links/{short_code}" \
 ## Лицензия
 
 MIT 
+
+## Безопасность
+
+- Все эндпоинты управления ссылками требуют аутентификации
+- Пароли хешируются с использованием bcrypt
+- Используется JWT для аутентификации
+- Токены имеют ограниченный срок действия
+- Все URL-адреса проверяются на валидность
+
+## Ограничения
+
+- Минимальная длина пароля: 8 символов
+- Максимальная длина пользовательского алиаса: 50 символов
+- Срок действия токена: 30 минут
+- Максимальное количество попыток входа: 5 в минуту 
