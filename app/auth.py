@@ -5,10 +5,11 @@ from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 
-import schemas
-import models
-from database import SessionLocal
+from app.database import SessionLocal
+import app.models as models
+import app.schemas as schemas
 
 SECRET_KEY = "your-secret-key-keep-it-secret"
 ALGORITHM = "HS256"
@@ -24,7 +25,12 @@ def get_password_hash(password):
     return pwd_context.hash(password)
 
 def get_user(db: Session, username: str):
-    return db.query(models.User).filter(models.User.username == username).first()
+    return db.query(models.User).filter(
+        or_(
+            models.User.username == username,
+            models.User.email == username
+        )
+    ).first()
 
 def authenticate_user(db: Session, username: str, password: str):
     user = get_user(db, username)
