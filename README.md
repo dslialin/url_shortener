@@ -39,7 +39,7 @@
 1. Убедитесь, что у вас установлены Docker и Docker Compose
 2. Клонируйте репозиторий:
    ```bash
-   git clone https://github.com/yourusername/url_shortener.git
+   git clone https://github.com/dslialin/url_shortener.git
    cd url_shortener
    ```
 3. Запустите приложение с помощью Docker Compose:
