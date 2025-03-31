@@ -3,6 +3,7 @@ version: '3.8'
 services:
   app:
     build: .
+    working_dir: /app
     restart: always
     ports:
       - "8000:8000"
@@ -16,9 +17,9 @@ services:
       - REDIS_DB=0
     depends_on:
       - redis
-    volumes:
-      - ./app:/app/app
-      - sqlite_data:/app
+    # volumes:
+    #   - ./app:/app/app
+    #   - sqlite_data:/app
 
   redis:
     image: redis:6-alpine

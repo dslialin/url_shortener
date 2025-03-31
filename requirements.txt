@@ -1,4 +1,4 @@
-fastapi==0.104.1
+fastapi
 uvicorn==0.24.0
 sqlalchemy==2.0.23
 psycopg2-binary==2.9.9
@@ -11,4 +11,11 @@ pydantic-extra-types==2.1.0
 pydantic-core==2.14.5
 email-validator==2.1.0
 python-dotenv==1.0.0
-celery==5.3.4 
+celery==5.3.4
+
+pytest
+pytest-asyncio
+httpx
+coverage
+pytest-cov
+locust 

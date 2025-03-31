@@ -2,11 +2,23 @@ FROM python:3.9-slim
 
 WORKDIR /app
 
-# Установка зависимостей
+# Установка сборочных зависимостей
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    python3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Установка зависимостей Python
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade -r requirements.txt
 
+# Удаление сборочных зависимостей (опционально, для уменьшения размера образа)
+# RUN apt-get purge -y --auto-remove build-essential python3-dev
+
 # Копирование исходного кода
+# Сначала явно копируем папку tests
+COPY tests ./tests/
+# Затем копируем все остальное
 COPY . .
 
 # Делаем entrypoint скрипт исполняемым

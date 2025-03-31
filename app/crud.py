@@ -105,14 +105,12 @@ def update_setting(db: Session, key: str, value: str):
     return setting
 
 def get_expired_links(db: Session) -> List[models.Link]:
-    """Получение списка истекших ссылок"""
     return db.query(models.Link).filter(
         models.Link.expires_at <= datetime.utcnow(),
         models.Link.expires_at.isnot(None)
     ).all()
 
 def get_unused_links(db: Session, days: int) -> List[models.Link]:
-    """Получение списка неиспользуемых ссылок"""
     cutoff_date = datetime.utcnow() - timedelta(days=days)
     return db.query(models.Link).filter(
         models.Link.last_used_at < cutoff_date,

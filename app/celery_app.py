@@ -14,18 +14,15 @@ celery_app = Celery(
     include=["app.tasks"]
 )
 
-# Настройка Celery Beat для выполнения периодических задач
 celery_app.conf.beat_schedule = {
-    # Удаление просроченных ссылок
     'cleanup-expired-links-every-hour': {
         'task': 'app.tasks.cleanup_expired_links',
-        'schedule': crontab(minute=0, hour='*'),  # Каждый час в 0 минут
+        'schedule': crontab(minute=0, hour='*'),
     },
-    # Удаление неактивных ссылок
     'cleanup-inactive-links-every-day': {
         'task': 'app.tasks.cleanup_inactive_links',
-        'schedule': crontab(minute=0, hour=0),  # Каждый день в полночь
-        'kwargs': {'days': 30},  # Ссылки, неактивные более 30 дней
+        'schedule': crontab(minute=0, hour=0),
+        'kwargs': {'days': 30},
     },
 }
 

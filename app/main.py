@@ -103,65 +103,63 @@ async def create_short_link(
     db: Session = Depends(get_db),
     current_user: Optional[models.User] = Depends(get_current_active_user)
 ):
+    logger.debug(f"Creating short link for URL: {link.original_url}, custom alias: {link.custom_alias}")
+    if link.custom_alias:
+        existing_link = db.query(models.Link).filter(models.Link.custom_alias == link.custom_alias).first()
+        if existing_link:
+            raise HTTPException(status_code=400, detail="Custom alias already in use")
+        short_code = link.custom_alias
+    else:
+        import secrets
+        import string
+        alphabet = string.ascii_letters + string.digits
+        short_code = ''.join(secrets.choice(alphabet) for _ in range(6))
+    
+    logger.debug(f"Using short code: {short_code}")
+    logger.debug(f"Current user: {current_user.username if current_user else None}")
+    
+    db_link = models.Link(
+        original_url=str(link.original_url),
+        short_code=short_code,
+        custom_alias=link.custom_alias,
+        expires_at=link.expires_at,
+        owner_id=current_user.id if current_user else None,
+        created_at=datetime.utcnow(),
+        access_count=0
+    )
+    
+    logger.debug("Adding link to database")
     try:
-        logger.debug(f"Creating short link for URL: {link.original_url}, custom alias: {link.custom_alias}")
-        if link.custom_alias:
-            existing_link = db.query(models.Link).filter(models.Link.custom_alias == link.custom_alias).first()
-            if existing_link:
-                raise HTTPException(status_code=400, detail="Custom alias already in use")
-            short_code = link.custom_alias
-        else:
-            import secrets
-            import string
-            alphabet = string.ascii_letters + string.digits
-            short_code = ''.join(secrets.choice(alphabet) for _ in range(6))
-        
-        logger.debug(f"Using short code: {short_code}")
-        logger.debug(f"Current user: {current_user.username if current_user else None}")
-        
-        db_link = models.Link(
-            original_url=str(link.original_url),
-            short_code=short_code,
-            custom_alias=link.custom_alias,
-            expires_at=link.expires_at,
-            owner_id=current_user.id if current_user else None,
-            created_at=datetime.utcnow(),
-            access_count=0
-        )
-        
-        logger.debug("Adding link to database")
         db.add(db_link)
         db.commit()
-        logger.debug("Link added to database")
-        db.refresh(db_link)
-        
-        # Сохраняем в кэш
-        cache_data = {
-            "original_url": str(db_link.original_url),
-            "expires_at": db_link.expires_at.isoformat() if db_link.expires_at else None,
-            "access_count": db_link.access_count,
-            "last_accessed": db_link.last_accessed.isoformat() if db_link.last_accessed else None
-        }
-        set_cached_link(short_code, cache_data)
-        
-        result = {
-            "original_url": db_link.original_url,
-            "short_code": db_link.short_code,
-            "custom_alias": db_link.custom_alias,
-            "created_at": db_link.created_at,
-            "expires_at": db_link.expires_at,
-            "last_accessed": db_link.last_accessed,
-            "access_count": db_link.access_count,
-            "owner_id": db_link.owner_id
-        }
-        logger.debug(f"Returning link: {result}")
-        return result
-    except Exception as e:
+    except Exception as db_exc:
         db.rollback()
-        import traceback
-        logger.error(f"Error creating short link: {str(e)}")
-        logger.error(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Database error creating short link: {db_exc}")
+        raise HTTPException(status_code=500, detail="Database error occurred.")
+    
+    logger.debug("Link added to database")
+    db.refresh(db_link)
+    
+    cache_data = {
+        "original_url": str(db_link.original_url),
+        "expires_at": db_link.expires_at.isoformat() if db_link.expires_at else None,
+        "access_count": db_link.access_count,
+        "last_accessed": db_link.last_accessed.isoformat() if db_link.last_accessed else None
+    }
+    set_cached_link(short_code, cache_data)
+    
+    result = {
+        "original_url": db_link.original_url,
+        "short_code": db_link.short_code,
+        "custom_alias": db_link.custom_alias,
+        "created_at": db_link.created_at,
+        "expires_at": db_link.expires_at,
+        "last_accessed": db_link.last_accessed,
+        "access_count": db_link.access_count,
+        "owner_id": db_link.owner_id
+    }
+    logger.debug(f"Returning link: {result}")
+    return result
 
 @app.get("/test")
 async def test_endpoint():
@@ -279,7 +277,6 @@ async def update_link(
     if db_link.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to update this link")
     
-    # Update fields
     if link_update.original_url is not None:
         db_link.original_url = link_update.original_url
     if link_update.expires_at is not None:

@@ -1,0 +1,7 @@
+# ... existing code ...
+*.log 
+
+# Coverage reports
+.coverage*
+coverage_report/
+htmlcov/ 
