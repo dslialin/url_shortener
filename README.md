@@ -234,26 +234,37 @@ Redis используется для:
 
 ```
 url_shortener/
+├── .coveragerc      # Конфигурация для coverage.py
+├── .dockerignore      # Исключения для Docker сборки
+├── .env               # Переменные окружения (пример, не в репозитории)
+├── .git/              # Папка Git
+├── .gitignore         # Исключения для Git
+├── Dockerfile         # Файл для сборки Docker образа
+├── LICENSE            # Лицензия
+├── README.md          # Документация
 ├── app/
 │   ├── __init__.py
-│   ├── main.py        # Основной файл приложения
-│   ├── models.py      # Модели данных
-│   ├── schemas.py     # Схемы Pydantic
 │   ├── auth.py        # Аутентификация и авторизация
-│   ├── database.py    # Настройка базы данных
-│   ├── tasks.py       # Задачи Celery для автоматической очистки
-│   ├── celery_app.py  # Настройка Celery
-│   ├── redis_client.py # Клиент Redis для кэширования
 │   ├── cache.py       # Функции для работы с кэшем
-│   └── check_db.py    # Скрипт для проверки базы данных
-├── Dockerfile         # Файл для сборки Docker образа
+│   ├── celery_app.py  # Настройка Celery
+│   ├── check_db.py    # Скрипт для проверки базы данных
+│   ├── database.py    # Настройка базы данных
+│   ├── main.py        # Основной файл приложения
+│   ├── models.py      # Модели данных SQLAlchemy
+│   ├── redis_client.py # Клиент Redis для кэширования
+│   ├── schemas.py     # Схемы Pydantic
+│   └── tasks.py       # Задачи Celery для автоматической очистки
 ├── docker-compose.yml # Конфигурация Docker Compose
 ├── docker-entrypoint.sh # Скрипт инициализации для Docker
-├── .dockerignore      # Исключения для Docker сборки
-├── .env               # Переменные окружения
+├── locustfile.py      # Сценарий для нагрузочного тестирования Locust
 ├── requirements.txt   # Зависимости проекта
-├── url_shortener.db   # SQLite база данных
-└── README.md          # Документация
+├── tests/             # Папка с тестами pytest
+│   ├── __init__.py
+│   ├── conftest.py    # Фикстуры pytest
+│   ├── test_api.py    # Функциональные API тесты
+│   └── test_utils.py  # Юнит-тесты
+└── url_shortener.db   # SQLite база данных (пример, не в репозитории)
+
 ```
 
 ## Технический стек

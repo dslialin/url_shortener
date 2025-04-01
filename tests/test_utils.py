@@ -1,8 +1,6 @@
 import string
 import pytest
 
-# Assuming generate_short_code is in app.main
-# We might need to adjust the import path based on project structure and how tests are run
 from app.main import generate_short_code 
 
 def test_generate_short_code_properties():
